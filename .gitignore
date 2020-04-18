@@ -1,0 +1,19 @@
+# Created by .ignore support plugin (hsz.mobi)
+
+# IntelliJ project files
+.idea
+*.iml
+out
+gen
+
+# core
+/*/target/
+/target/
+*.log
+*.gz
+
+# Visual Studio Code
+.settings
+.project
+.classpath
+.factorypath
