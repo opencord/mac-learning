@@ -21,10 +21,17 @@ import org.junit.Test;
 import org.onlab.packet.MacAddress;
 import org.onlab.packet.VlanId;
 import org.onosproject.net.ConnectPoint;
+import org.onosproject.net.DeviceId;
+import org.onosproject.net.Host;
+import org.onosproject.net.HostId;
+import org.onosproject.net.HostLocation;
+import org.onosproject.net.PortNumber;
 
+import java.io.IOException;
 import java.util.Optional;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 /**
@@ -33,7 +40,7 @@ import static org.junit.Assert.assertTrue;
 public class MacLearnerManagerTest extends TestBaseMacLearner {
 
     @Before
-    public void setUp() {
+    public void setUp() throws IOException {
         setUpApp();
     }
 
@@ -45,7 +52,12 @@ public class MacLearnerManagerTest extends TestBaseMacLearner {
     private static final MacAddress CLIENT_MAC = MacAddress.valueOf("00:00:00:00:00:01");
     private static final VlanId CLIENT_VLAN = VlanId.vlanId("100");
     private static final VlanId CLIENT_QINQ_VLAN = VlanId.vlanId("200");
-    private static final ConnectPoint CLIENT_CP = ConnectPoint.deviceConnectPoint("of:0000000000000001/1");
+    public static final DeviceId OLT_DEVICE_ID = DeviceId.deviceId("of:0000b86a974385f7");
+    public static final PortNumber UNI_PORT = PortNumber.portNumber(16);
+    public static final ConnectPoint CLIENT_CP = new ConnectPoint(OLT_DEVICE_ID, UNI_PORT);
+    public static final DeviceId AGG_DEVICE_ID = DeviceId.deviceId("of:0000000000000001");
+    public static final PortNumber AGG_OLT_PORT = PortNumber.portNumber(10);
+    public static final PortNumber OLT_NNI_PORT = PortNumber.portNumber(1048576);
 
     @Test
     public void testSingleTagDhcpPacket() {
@@ -69,6 +81,23 @@ public class MacLearnerManagerTest extends TestBaseMacLearner {
                 CLIENT_CP.port(), CLIENT_QINQ_VLAN);
         assertTrue(macAddress.isPresent());
         assertEquals(CLIENT_MAC, macAddress.get());
+    }
+
+    @Test
+    public void testHostProviding() {
+        packetService.processPacket(new TestDhcpRequestPacketContext(CLIENT_MAC,
+                CLIENT_VLAN,
+                CLIENT_QINQ_VLAN,
+                CLIENT_CP));
+        HostId hostId = HostId.hostId(CLIENT_MAC, CLIENT_QINQ_VLAN);
+        Host host = hostService.getHost(hostId);
+        assertNotNull(host);
+        assertEquals(OLT_DEVICE_ID, host.location().deviceId());
+        assertEquals(UNI_PORT, host.location().port());
+        Optional<HostLocation> optAuxLoc = host.auxLocations().stream().findFirst();
+        assertTrue(optAuxLoc.isPresent());
+        assertEquals(AGG_DEVICE_ID, optAuxLoc.get().deviceId());
+        assertEquals(AGG_OLT_PORT, optAuxLoc.get().port());
     }
 
 }

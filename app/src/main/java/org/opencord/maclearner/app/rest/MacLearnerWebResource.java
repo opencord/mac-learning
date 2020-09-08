@@ -43,8 +43,9 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
+import static javax.ws.rs.core.Response.Status.NO_CONTENT;
+import static javax.ws.rs.core.Response.Status.OK;
 import static org.slf4j.LoggerFactory.getLogger;
-import static javax.ws.rs.core.Response.Status.*;
 
 /**
  * Mac Learner web resource.

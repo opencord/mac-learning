@@ -13,7 +13,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.opencord.maclearner.app.impl;
 
 /**
@@ -27,7 +26,7 @@ public final class OsgiPropertyConstants {
     public static final String CACHE_DURATION = "cacheDurationSec";
     public static final int CACHE_DURATION_DEFAULT = 86400; // 1 day
 
-    public static final String ENABLE_DEVICE_LISTENER = "enableDeviceListener";
-    public static final boolean ENABLE_DEVICE_LISTENER_DEFAULT = false;
+    public static final String AUTO_CLEAR_MAC_MAPPING = "autoClearMacMapping";
+    public static final boolean AUTO_CLEAR_MAC_MAPPING_DEFAULT = false;
 
 }
