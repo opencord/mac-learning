@@ -33,11 +33,15 @@ import java.util.Optional;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
+import static org.onlab.junit.TestTools.assertAfter;
 
 /**
  * Set of tests of the Mac Learner ONOS application component.
  */
 public class MacLearnerManagerTest extends TestBaseMacLearner {
+
+    private static final int DELAY = 250;
+    private static final int PROCESSING_LENGTH = 500;
 
     @Before
     public void setUp() throws IOException {
@@ -65,10 +69,13 @@ public class MacLearnerManagerTest extends TestBaseMacLearner {
                 CLIENT_VLAN,
                 VlanId.NONE,
                 CLIENT_CP));
-        Optional<MacAddress> macAddress = macLearnerManager.getMacMapping(CLIENT_CP.deviceId(),
-                CLIENT_CP.port(), CLIENT_VLAN);
-        assertTrue(macAddress.isPresent());
-        assertEquals(CLIENT_MAC, macAddress.get());
+        assertAfter(DELAY, PROCESSING_LENGTH, () -> {
+            Optional<MacAddress> macAddress =
+                    macLearnerManager.getMacMapping(CLIENT_CP.deviceId(),
+                                                    CLIENT_CP.port(), CLIENT_VLAN);
+            assertTrue(macAddress.isPresent());
+            assertEquals(CLIENT_MAC, macAddress.get());
+        });
     }
 
     @Test
@@ -77,10 +84,13 @@ public class MacLearnerManagerTest extends TestBaseMacLearner {
                 CLIENT_VLAN,
                 CLIENT_QINQ_VLAN,
                 CLIENT_CP));
-        Optional<MacAddress> macAddress = macLearnerManager.getMacMapping(CLIENT_CP.deviceId(),
-                CLIENT_CP.port(), CLIENT_QINQ_VLAN);
-        assertTrue(macAddress.isPresent());
-        assertEquals(CLIENT_MAC, macAddress.get());
+        assertAfter(DELAY, PROCESSING_LENGTH, () -> {
+            Optional<MacAddress> macAddress = macLearnerManager.getMacMapping(CLIENT_CP.deviceId(),
+                                                                              CLIENT_CP.port(), CLIENT_QINQ_VLAN);
+            assertTrue(macAddress.isPresent());
+            assertEquals(CLIENT_MAC, macAddress.get());
+        });
+
     }
 
     @Test
@@ -89,15 +99,17 @@ public class MacLearnerManagerTest extends TestBaseMacLearner {
                 CLIENT_VLAN,
                 CLIENT_QINQ_VLAN,
                 CLIENT_CP));
-        HostId hostId = HostId.hostId(CLIENT_MAC, CLIENT_QINQ_VLAN);
-        Host host = hostService.getHost(hostId);
-        assertNotNull(host);
-        assertEquals(OLT_DEVICE_ID, host.location().deviceId());
-        assertEquals(UNI_PORT, host.location().port());
-        Optional<HostLocation> optAuxLoc = host.auxLocations().stream().findFirst();
-        assertTrue(optAuxLoc.isPresent());
-        assertEquals(AGG_DEVICE_ID, optAuxLoc.get().deviceId());
-        assertEquals(AGG_OLT_PORT, optAuxLoc.get().port());
+        assertAfter(DELAY, PROCESSING_LENGTH, () -> {
+            HostId hostId = HostId.hostId(CLIENT_MAC, CLIENT_QINQ_VLAN);
+            Host host = hostService.getHost(hostId);
+            assertNotNull(host);
+            assertEquals(OLT_DEVICE_ID, host.location().deviceId());
+            assertEquals(UNI_PORT, host.location().port());
+            Optional<HostLocation> optAuxLoc = host.auxLocations().stream().findFirst();
+            assertTrue(optAuxLoc.isPresent());
+            assertEquals(AGG_DEVICE_ID, optAuxLoc.get().deviceId());
+            assertEquals(AGG_OLT_PORT, optAuxLoc.get().port());
+        });
     }
 
 }
