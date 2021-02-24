@@ -23,7 +23,8 @@
         <version>1.0.1-SNAPSHOT</version>
     </parent>
     <modelVersion>4.0.0</modelVersion>
-
+    
+    <version>${maclearner.api.version}</version>
     <artifactId>maclearner-api</artifactId>
     <packaging>bundle</packaging>
 

@@ -41,7 +41,7 @@
         <dependency>
             <groupId>org.opencord</groupId>
             <artifactId>maclearner-api</artifactId>
-            <version>${project.version}</version>
+            <version>${maclearner.api.version}</version>
         </dependency>
         <dependency>
             <groupId>org.onosproject</groupId>

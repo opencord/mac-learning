@@ -33,12 +33,12 @@
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <onos.version>2.2.2</onos.version>
         <onos.app.name>org.opencord.maclearner</onos.app.name>
         <onos.app.category>Utility</onos.app.category>
         <onos.app.title>Mac Address by Connected Port Information Service</onos.app.title>
         <onos.app.origin>ON.Lab</onos.app.origin>
         <onos.app.url>http://onosproject.org</onos.app.url>
+        <maclearner.api.version>1.0.1-SNAPSHOT</maclearner.api.version>
     </properties>
 
     <modules>
