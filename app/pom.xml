@@ -44,6 +44,12 @@
             <version>${maclearner.api.version}</version>
         </dependency>
         <dependency>
+            <groupId>org.opencord</groupId>
+            <artifactId>sadis-api</artifactId>
+            <version>${sadis.api.version}</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
             <groupId>org.onosproject</groupId>
             <artifactId>onos-cli</artifactId>
             <version>${onos.version}</version>

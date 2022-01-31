@@ -47,16 +47,20 @@ import org.onosproject.event.DefaultEventSinkRegistry;
 import org.onosproject.event.Event;
 import org.onosproject.event.EventDeliveryService;
 import org.onosproject.event.EventSink;
+import org.onosproject.net.Annotations;
 import org.onosproject.net.ConnectPoint;
 import org.onosproject.net.DefaultDevice;
 import org.onosproject.net.DefaultHost;
 import org.onosproject.net.DefaultLink;
 import org.onosproject.net.Device;
 import org.onosproject.net.DeviceId;
+import org.onosproject.net.Element;
 import org.onosproject.net.Host;
 import org.onosproject.net.HostId;
 import org.onosproject.net.HostLocation;
 import org.onosproject.net.Link;
+import org.onosproject.net.Port;
+import org.onosproject.net.PortNumber;
 import org.onosproject.net.config.Config;
 import org.onosproject.net.config.ConfigApplyDelegate;
 import org.onosproject.net.config.basics.HostLearningConfig;
@@ -93,6 +97,10 @@ import org.onosproject.store.service.MapEventListener;
 import org.onosproject.store.service.SetEventListener;
 import org.onosproject.store.service.StorageServiceAdapter;
 import org.onosproject.store.service.Versioned;
+import org.opencord.sadis.BandwidthProfileInformation;
+import org.opencord.sadis.BaseInformationService;
+import org.opencord.sadis.SadisService;
+import org.opencord.sadis.SubscriberAndDeviceInformation;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -113,8 +121,10 @@ import static org.onosproject.net.NetTestTools.PID;
 import static org.opencord.maclearner.app.impl.MacLearnerManagerTest.AGG_DEVICE_ID;
 import static org.opencord.maclearner.app.impl.MacLearnerManagerTest.AGG_OLT_PORT;
 import static org.opencord.maclearner.app.impl.MacLearnerManagerTest.CLIENT_CP;
+import static org.opencord.maclearner.app.impl.MacLearnerManagerTest.CLIENT_VLAN;
 import static org.opencord.maclearner.app.impl.MacLearnerManagerTest.OLT_DEVICE_ID;
 import static org.opencord.maclearner.app.impl.MacLearnerManagerTest.OLT_NNI_PORT;
+import static org.opencord.maclearner.app.impl.MacLearnerManagerTest.OLT_SERIAL_NUMBER;
 
 /**
  * Mac Learner mock services class.
@@ -150,6 +160,7 @@ public abstract class TestBaseMacLearner {
     protected MockLinkService linkService = new MockLinkService();
     protected MacLearnerHostProvider macLearnerHostProvider = new MacLearnerHostProvider();
     protected MockHostService hostService = new MockHostService(Sets.newHashSet());
+    protected MockSadisService sadisService = new MockSadisService();
 
     public void setUpApp() throws IOException {
         macLearnerManager = new MacLearnerManager();
@@ -161,6 +172,8 @@ public abstract class TestBaseMacLearner {
         macLearnerManager.deviceService = this.deviceService;
         macLearnerManager.topologyService = this.topologyService;
         macLearnerManager.linkService = this.linkService;
+        macLearnerManager.sadisService = this.sadisService;
+        macLearnerManager.hostService = this.hostService;
         hostLearningConfig = new HostLearningConfig();
         InputStream jsonStream = HostLearningConfigTest.class
                 .getResourceAsStream("/host-learning-config.json");
@@ -316,10 +329,15 @@ public abstract class TestBaseMacLearner {
             if (deviceId.equals(OLT_DEVICE_ID)) {
                 return new DefaultDevice(null, OLT_DEVICE_ID, Device.Type.SWITCH,
                         "VOLTHA Project", "open_pon", "open_pon",
-                        "BBSIM_OLT_1", new ChassisId("a0a0a0a0a01"));
+                        OLT_SERIAL_NUMBER, new ChassisId("a0a0a0a0a01"));
             } else {
                 return null;
             }
+        }
+
+        @Override
+        public Port getPort(DeviceId deviceId, PortNumber portNumber) {
+            return new TestBaseMacLearner.MockPort(new ConnectPoint(deviceId, portNumber));
         }
 
         @Override
@@ -330,6 +348,56 @@ public abstract class TestBaseMacLearner {
         @Override
         public void removeListener(DeviceListener listener) {
             listeners.remove(listener);
+        }
+    }
+
+    static class MockPort implements Port {
+        private ConnectPoint cp;
+
+        public MockPort(ConnectPoint cp) {
+            this.cp = cp;
+        }
+        @Override
+        public boolean isEnabled() {
+            return true;
+        }
+        @Override
+        public long portSpeed() {
+            return 1000;
+        }
+        @Override
+        public Element element() {
+            return null;
+        }
+        @Override
+        public PortNumber number() {
+            return null;
+        }
+        @Override
+        public Annotations annotations() {
+            return new MockAnnotations();
+        }
+        @Override
+        public Type type() {
+            return Port.Type.FIBER;
+        }
+
+        private class MockAnnotations implements Annotations {
+
+            @Override
+            public String value(String val) {
+                if (cp.port().toLong() == 32) {
+                    return "ALPHe3d1cea3-1";
+                } else if (cp.port().toLong() == 4112) {
+                    return "ALPHe3d1ceb7-1";
+                } else {
+                    return "PON 1/1";
+                }
+            }
+            @Override
+            public Set<String> keys() {
+                return null;
+            }
         }
     }
 
@@ -693,6 +761,7 @@ public abstract class TestBaseMacLearner {
                     hostDescription.ipAddress(), VlanId.NONE,
                     EthType.EtherType.UNKNOWN.ethType(), false, false));
             hostService = new MockHostService(previousHosts);
+            macLearnerManager.hostService = hostService;
         }
 
         @Override
@@ -703,6 +772,7 @@ public abstract class TestBaseMacLearner {
             Host removedHost = hostService.getHost(hostId);
             previousHosts.remove(removedHost);
             hostService = new MockHostService(previousHosts);
+            macLearnerManager.hostService = hostService;
         }
 
         @Override
@@ -778,4 +848,112 @@ public abstract class TestBaseMacLearner {
         }
     }
 
+    /**
+     * Generates DHCP RESPONSE packet.
+     */
+    protected static class TestDhcpResponsePacketContext extends PacketContextAdapter {
+
+        private InboundPacket inPacket;
+
+        public TestDhcpResponsePacketContext(MacAddress clientMacAddress, MacAddress serverMacAddress, VlanId vlanId,
+                                            VlanId qinqQVid, ConnectPoint connectPoint) {
+            super(0, null, null, false);
+            byte[] dhcpMsgType = new byte[1];
+            dhcpMsgType[0] = (byte) DHCP.MsgType.DHCPOFFER.getValue();
+
+            DhcpOption dhcpOption = new DhcpOption();
+            dhcpOption.setCode(DHCP.DHCPOptionCode.OptionCode_MessageType.getValue());
+            dhcpOption.setData(dhcpMsgType);
+            dhcpOption.setLength((byte) 1);
+            DhcpOption endOption = new DhcpOption();
+            endOption.setCode(DHCP.DHCPOptionCode.OptionCode_END.getValue());
+
+            DHCP dhcp = new DHCP();
+            dhcp.setHardwareType(DHCP.HWTYPE_ETHERNET);
+            dhcp.setHardwareAddressLength((byte) 6);
+            dhcp.setClientHardwareAddress(clientMacAddress.toBytes());
+            dhcp.setOptions(ImmutableList.of(dhcpOption, endOption));
+            dhcp.setYourIPAddress(Ip4Address.valueOf("1.1.1.1").toInt());
+
+            UDP udp = new UDP();
+            udp.setPayload(dhcp);
+            udp.setSourcePort(UDP.DHCP_SERVER_PORT);
+            udp.setDestinationPort(UDP.DHCP_CLIENT_PORT);
+
+            IPv4 ipv4 = new IPv4();
+            ipv4.setPayload(udp);
+            ipv4.setDestinationAddress(INTERFACE_IP.toInt());
+            ipv4.setSourceAddress(SERVER_IP.toInt());
+
+            Ethernet eth = new Ethernet();
+            eth.setEtherType(Ethernet.TYPE_IPV4)
+                    .setVlanID(vlanId.toShort())
+                    .setQinQVID(qinqQVid.toShort())
+                    .setSourceMACAddress(serverMacAddress)
+                    .setDestinationMACAddress(clientMacAddress)
+                    .setPayload(ipv4);
+
+            this.inPacket = new DefaultInboundPacket(connectPoint, eth,
+                    ByteBuffer.wrap(eth.serialize()));
+        }
+
+        @Override
+        public InboundPacket inPacket() {
+            return this.inPacket;
+        }
+    }
+
+    /**
+     * Mock Sadis service.
+     */
+    static class MockSadisService implements SadisService {
+        @Override
+        public BaseInformationService<SubscriberAndDeviceInformation> getSubscriberInfoService() {
+            return new TestBaseMacLearner.MockSubService();
+        }
+
+        @Override
+        public BaseInformationService<BandwidthProfileInformation> getBandwidthProfileService() {
+            return null;
+        }
+    }
+
+    static class MockSubService implements BaseInformationService<SubscriberAndDeviceInformation> {
+        TestBaseMacLearner.MockSubscriberAndDeviceInformation device =
+                new TestBaseMacLearner.MockSubscriberAndDeviceInformation(OLT_SERIAL_NUMBER, CLIENT_VLAN, VlanId.NONE,
+                        null, null, null, null, (int) OLT_NNI_PORT.toLong());
+        @Override
+        public SubscriberAndDeviceInformation get(String id) {
+            if (id.equals(OLT_SERIAL_NUMBER)) {
+                return device;
+            }
+            return null;
+        }
+
+        @Override
+        public void clearLocalData() {}
+        @Override
+        public void invalidateAll() {}
+        @Override
+        public void invalidateId(String id) {}
+        @Override
+        public SubscriberAndDeviceInformation getfromCache(String id) {
+            return null;
+        }
+    }
+
+   static class MockSubscriberAndDeviceInformation extends SubscriberAndDeviceInformation {
+
+        MockSubscriberAndDeviceInformation(String id, VlanId cTag,
+                                           VlanId sTag, String nasPortId,
+                                           String circuitId, MacAddress hardId,
+                                           Ip4Address ipAddress, int uplinkPort) {
+            this.setHardwareIdentifier(hardId);
+            this.setId(id);
+            this.setIPAddress(ipAddress);
+            this.setNasPortId(nasPortId);
+            this.setUplinkPort(uplinkPort);
+            this.setCircuitId(circuitId);
+        }
+    }
 }

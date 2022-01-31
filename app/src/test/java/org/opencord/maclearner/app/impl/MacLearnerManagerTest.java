@@ -26,8 +26,14 @@ import org.onosproject.net.Host;
 import org.onosproject.net.HostId;
 import org.onosproject.net.HostLocation;
 import org.onosproject.net.PortNumber;
+import org.onosproject.net.flow.TrafficTreatment;
+import org.onosproject.net.flow.instructions.Instruction;
+import org.onosproject.net.flow.instructions.Instructions;
+import org.onosproject.net.packet.OutboundPacket;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.util.List;
 import java.util.Optional;
 
 import static org.junit.Assert.assertEquals;
@@ -54,7 +60,7 @@ public class MacLearnerManagerTest extends TestBaseMacLearner {
     }
 
     private static final MacAddress CLIENT_MAC = MacAddress.valueOf("00:00:00:00:00:01");
-    private static final VlanId CLIENT_VLAN = VlanId.vlanId("100");
+    public static final VlanId CLIENT_VLAN = VlanId.vlanId("100");
     private static final VlanId CLIENT_QINQ_VLAN = VlanId.vlanId("200");
     public static final DeviceId OLT_DEVICE_ID = DeviceId.deviceId("of:0000b86a974385f7");
     public static final PortNumber UNI_PORT = PortNumber.portNumber(16);
@@ -62,6 +68,9 @@ public class MacLearnerManagerTest extends TestBaseMacLearner {
     public static final DeviceId AGG_DEVICE_ID = DeviceId.deviceId("of:0000000000000001");
     public static final PortNumber AGG_OLT_PORT = PortNumber.portNumber(10);
     public static final PortNumber OLT_NNI_PORT = PortNumber.portNumber(1048576);
+    public static final ConnectPoint NNI_CP = new ConnectPoint(OLT_DEVICE_ID, OLT_NNI_PORT);
+    public static final String OLT_SERIAL_NUMBER = "BBSIM_OLT_1";
+    private static final MacAddress SERVER_MAC = MacAddress.valueOf("00:00:00:00:00:11");
 
     @Test
     public void testSingleTagDhcpPacket() {
@@ -112,4 +121,62 @@ public class MacLearnerManagerTest extends TestBaseMacLearner {
         });
     }
 
+    @Test
+    public void testDhcpForwardClientRequest() {
+        this.macLearnerManager.enableDhcpForward = true;
+        TestDhcpRequestPacketContext dhcpRequest = new TestDhcpRequestPacketContext(CLIENT_MAC, CLIENT_VLAN,
+                VlanId.NONE, CLIENT_CP);
+        ByteBuffer inBuffer = dhcpRequest.inPacket().unparsed();
+
+        packetService.processPacket(dhcpRequest);
+
+        assertAfter(DELAY, PROCESSING_LENGTH, () -> {
+            OutboundPacket emittedPacket = packetService.emittedPacket;
+            ByteBuffer outBuffer = emittedPacket.data();
+            DeviceId deviceId = emittedPacket.sendThrough();
+            TrafficTreatment treatment = emittedPacket.treatment();
+            List<Instruction> instructions = treatment.allInstructions();
+
+            assertEquals(deviceId, OLT_DEVICE_ID);
+            for (Instruction instruction : instructions) {
+                if (instruction instanceof Instructions.OutputInstruction) {
+                    assertEquals(OLT_NNI_PORT, ((Instructions.OutputInstruction) instruction).port());
+                }
+            }
+
+            // Test for packet not modified
+            assertEquals(0, inBuffer.compareTo(outBuffer));
+       });
+    }
+
+    @Test
+    public void testDhcpForwardServerResponse() {
+        this.macLearnerManager.enableDhcpForward = true;
+        testDhcpForwardClientRequest();
+
+        TestDhcpResponsePacketContext dhcpResponse = new TestDhcpResponsePacketContext(CLIENT_MAC, SERVER_MAC,
+                CLIENT_VLAN, VlanId.NONE, NNI_CP);
+        ByteBuffer inBuffer = dhcpResponse.inPacket().unparsed();
+
+        packetService.processPacket(dhcpResponse);
+
+        assertAfter(DELAY, PROCESSING_LENGTH, () -> {
+            OutboundPacket emittedPacket = packetService.emittedPacket;
+            ByteBuffer outBuffer = emittedPacket.data();
+
+            DeviceId deviceId = emittedPacket.sendThrough();
+            TrafficTreatment treatment = emittedPacket.treatment();
+            List<Instruction> instructions = treatment.allInstructions();
+
+            assertEquals(deviceId, OLT_DEVICE_ID);
+            for (Instruction instruction : instructions) {
+                if (instruction instanceof Instructions.OutputInstruction) {
+                    assertEquals(UNI_PORT, ((Instructions.OutputInstruction) instruction).port());
+                }
+            }
+
+            // Test for packet not modified
+            assertEquals(0, inBuffer.compareTo(outBuffer));
+        });
+    }
 }

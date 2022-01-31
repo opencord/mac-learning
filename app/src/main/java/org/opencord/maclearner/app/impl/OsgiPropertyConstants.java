@@ -29,4 +29,7 @@ public final class OsgiPropertyConstants {
     public static final String AUTO_CLEAR_MAC_MAPPING = "autoClearMacMapping";
     public static final boolean AUTO_CLEAR_MAC_MAPPING_DEFAULT = false;
 
+    public static final String ENABLE_DHCP_FORWARD = "enableDhcpForward";
+    public static final boolean ENABLE_DHCP_FORWARD_DEFAULT = false;
+
 }

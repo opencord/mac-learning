@@ -33,13 +33,21 @@ import org.onosproject.cluster.NodeId;
 import org.onosproject.core.ApplicationId;
 import org.onosproject.net.ConnectPoint;
 import org.onosproject.net.Device;
+import org.onosproject.net.ElementId;
+import org.onosproject.net.Host;
 import org.onosproject.net.HostId;
 import org.onosproject.net.HostLocation;
 import org.onosproject.net.Link;
+import org.onosproject.net.Port;
 import org.onosproject.net.device.DeviceEvent;
 import org.onosproject.net.device.DeviceListener;
 import org.onosproject.net.device.DeviceService;
+import org.onosproject.net.flow.DefaultTrafficTreatment;
+import org.onosproject.net.flow.TrafficTreatment;
+import org.onosproject.net.host.HostService;
 import org.onosproject.net.link.LinkService;
+import org.onosproject.net.packet.DefaultOutboundPacket;
+import org.onosproject.net.packet.OutboundPacket;
 import org.onosproject.net.topology.Topology;
 import org.onosproject.net.topology.TopologyService;
 import org.onosproject.store.service.ConsistentMap;
@@ -55,6 +63,9 @@ import org.opencord.maclearner.api.MacLearnerProvider;
 import org.opencord.maclearner.api.MacLearnerProviderService;
 import org.opencord.maclearner.api.MacLearnerService;
 import org.opencord.maclearner.api.MacLearnerValue;
+import org.opencord.sadis.BaseInformationService;
+import org.opencord.sadis.SadisService;
+import org.opencord.sadis.SubscriberAndDeviceInformation;
 import org.osgi.service.component.ComponentContext;
 import org.osgi.service.component.annotations.Activate;
 import org.osgi.service.component.annotations.Component;
@@ -80,10 +91,13 @@ import org.onosproject.store.LogicalTimestamp;
 import org.onosproject.store.serializers.KryoNamespaces;
 import org.onosproject.store.service.Serializer;
 import org.onosproject.store.service.WallClockTimestamp;
+import org.osgi.service.component.annotations.ReferenceCardinality;
+import org.osgi.service.component.annotations.ReferencePolicy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.net.URI;
+import java.nio.ByteBuffer;
 import java.util.Date;
 import java.util.Dictionary;
 import java.util.List;
@@ -106,6 +120,8 @@ import static org.opencord.maclearner.app.impl.OsgiPropertyConstants.AUTO_CLEAR_
 import static org.opencord.maclearner.app.impl.OsgiPropertyConstants.AUTO_CLEAR_MAC_MAPPING_DEFAULT;
 import static org.opencord.maclearner.app.impl.OsgiPropertyConstants.CACHE_DURATION_DEFAULT;
 import static org.opencord.maclearner.app.impl.OsgiPropertyConstants.CACHE_DURATION;
+import static org.opencord.maclearner.app.impl.OsgiPropertyConstants.ENABLE_DHCP_FORWARD;
+import static org.opencord.maclearner.app.impl.OsgiPropertyConstants.ENABLE_DHCP_FORWARD_DEFAULT;
 import static org.osgi.service.component.annotations.ReferenceCardinality.MANDATORY;
 
 /**
@@ -114,7 +130,8 @@ import static org.osgi.service.component.annotations.ReferenceCardinality.MANDAT
 @Component(immediate = true,
         property = {
                 CACHE_DURATION + ":Integer=" + CACHE_DURATION_DEFAULT,
-                AUTO_CLEAR_MAC_MAPPING + ":Boolean=" + AUTO_CLEAR_MAC_MAPPING_DEFAULT
+                AUTO_CLEAR_MAC_MAPPING + ":Boolean=" + AUTO_CLEAR_MAC_MAPPING_DEFAULT,
+                ENABLE_DHCP_FORWARD + ":Boolean=" + ENABLE_DHCP_FORWARD_DEFAULT
         },
         service = MacLearnerService.class
 )
@@ -132,6 +149,14 @@ public class MacLearnerManager
     private ScheduledFuture scheduledFuture;
 
     private final Logger log = LoggerFactory.getLogger(getClass());
+
+    protected BaseInformationService<SubscriberAndDeviceInformation> subsService;
+
+    @Reference(cardinality = ReferenceCardinality.OPTIONAL,
+            bind = "bindSadisService",
+            unbind = "unbindSadisService",
+            policy = ReferencePolicy.DYNAMIC)
+    protected volatile SadisService sadisService;
 
     @Reference(cardinality = MANDATORY)
     protected CoreService coreService;
@@ -160,6 +185,9 @@ public class MacLearnerManager
     @Reference(cardinality = MANDATORY)
     protected LinkService linkService;
 
+    @Reference(cardinality = ReferenceCardinality.MANDATORY)
+    protected HostService hostService;
+
     private final MacLearnerPacketProcessor macLearnerPacketProcessor =
             new MacLearnerPacketProcessor();
 
@@ -168,6 +196,11 @@ public class MacLearnerManager
 
     private ConsistentHasher hasher;
     public static final int HASH_WEIGHT = 10;
+
+    /**
+     * Enables Dhcp forwarding.
+     */
+    protected boolean enableDhcpForward = ENABLE_DHCP_FORWARD_DEFAULT;
 
     /**
      * Minimum duration of mapping, mapping can be exist until 2*cacheDuration because of cleanerTimer fixed rate.
@@ -219,6 +252,13 @@ public class MacLearnerManager
         clusterService.addListener(clusterListener);
         deviceService.addListener(deviceListener);
         createSchedulerForClearMacMappings();
+
+        if (sadisService != null) {
+            subsService = sadisService.getSubscriberInfoService();
+        } else {
+            log.warn("Sadis is not running");
+        }
+
         log.info("{} is started.", getClass().getSimpleName());
     }
 
@@ -275,6 +315,16 @@ public class MacLearnerManager
         return nodeId.equals(clusterService.getLocalNode().id());
     }
 
+    protected void bindSadisService(SadisService service) {
+        this.subsService = service.getSubscriberInfoService();
+        log.info("Sadis service is loaded");
+    }
+
+    protected void unbindSadisService(SadisService service) {
+        this.subsService = null;
+        log.info("Sadis service is unloaded");
+    }
+
     @Deactivate
     public void deactivate() {
         if (scheduledFuture != null) {
@@ -301,6 +351,14 @@ public class MacLearnerManager
             int cacheDur = Integer.parseInt(cacheDuration.trim());
             if (cacheDurationSec != cacheDur) {
                 setMacMappingCacheDuration(cacheDur);
+            }
+        }
+
+        Boolean o = Tools.isPropertyEnabled(properties, ENABLE_DHCP_FORWARD);
+        if (o != null) {
+            if (o != enableDhcpForward) {
+                log.info("Changing enableDhcpForward to: {} from {}", o, enableDhcpForward);
+                enableDhcpForward = o;
             }
         }
     }
@@ -557,9 +615,90 @@ public class MacLearnerManager
                         DHCP dhcpPayload = (DHCP) udpPacket.getPayload();
                         //This packet is dhcp.
                         processDhcpPacket(context, packet, dhcpPayload, sourcePort, deviceId, vlan);
+
+                        if (enableDhcpForward) {
+                            // Forward DHCP Packet to either uni or nni.
+                            forwardDhcpPacket(packet, dhcpPayload, device, vlan);
+                        }
                     }
                 }
             }
+        }
+
+        /**
+         * Returns the connectPoint which is the uplink port of the OLT.
+         */
+        private ConnectPoint getUplinkConnectPointOfOlt(DeviceId dId) {
+
+            Device device = deviceService.getDevice(dId);
+
+            if (device == null) {
+                log.warn("Could not find device for device ID {}", dId);
+                return null;
+            }
+
+            SubscriberAndDeviceInformation deviceInfo = subsService.get(device.serialNumber());
+            if (deviceInfo != null) {
+                log.debug("getUplinkConnectPointOfOlt DeviceId: {} devInfo: {}", dId, deviceInfo);
+                PortNumber pNum = PortNumber.portNumber(deviceInfo.uplinkPort());
+                Port port = deviceService.getPort(device.id(), pNum);
+                if (port != null) {
+                    return new ConnectPoint(device.id(), pNum);
+                } else {
+                    log.warn("Unable to find Port in deviceService for deice ID : {}, port : {}", dId, pNum);
+                }
+            } else {
+                log.warn("Unable to find Sadis entry for device ID : {}, device serial : {}",
+                        dId, device.serialNumber());
+            }
+
+            return null;
+        }
+
+        /***
+         * Forwards the packet to uni port or nni port based on the DHCP source port.
+         * Client DHCP packets are transparently forwarded to the nni port.
+         * Server DHCP replies are forwared to the respective uni port based on the (mac,vlan) lookup
+         */
+        private void forwardDhcpPacket(Ethernet packet, DHCP dhcpPayload, Device device, VlanId vlan) {
+            UDP udpPacket = (UDP) dhcpPayload.getParent();
+            int udpSourcePort = udpPacket.getSourcePort();
+            MacAddress clientMacAddress = MacAddress.valueOf(dhcpPayload.getClientHardwareAddress());
+
+            ConnectPoint destinationCp = null;
+
+            if (udpSourcePort == UDP.DHCP_CLIENT_PORT) {
+                destinationCp = getUplinkConnectPointOfOlt(device.id());
+            } else if (udpSourcePort == UDP.DHCP_SERVER_PORT) {
+                Host host = hostService.getHost(HostId.hostId(clientMacAddress, vlan));
+
+                ElementId elementId = host.location().elementId();
+                PortNumber portNumber = host.location().port();
+
+                destinationCp = new ConnectPoint(elementId, portNumber);
+            }
+
+            if (destinationCp == null) {
+                log.error("No connect point to send msg to DHCP message");
+                return;
+            }
+
+            if (log.isTraceEnabled()) {
+                VlanId printVlan = VlanId.NONE;
+
+                if (vlan != null) {
+                    printVlan = vlan;
+                }
+
+                log.trace("Emitting : packet {}, with MAC {}, with VLAN {}, with connect point {}",
+                        getDhcpPacketType(dhcpPayload), clientMacAddress, printVlan, destinationCp);
+            }
+
+            TrafficTreatment t = DefaultTrafficTreatment.builder()
+                    .setOutput(destinationCp.port()).build();
+            OutboundPacket o = new DefaultOutboundPacket(destinationCp
+                    .deviceId(), t, ByteBuffer.wrap(packet.serialize()));
+            packetService.emit(o);
         }
 
         //process the dhcp packet before forwarding
@@ -622,7 +761,6 @@ public class MacLearnerManager
                 sendMacLearnerEvent(MacLearnerEvent.Type.ADDED, deviceId, portNumber, vlanId, macAddress);
             }
         }
-
     }
 
     private MacDeleteResult removeFromMacAddressMap(MacLearnerKey macLearnerKey, boolean vanishHost) {
