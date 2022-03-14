@@ -29,8 +29,10 @@ import org.onosproject.cluster.ClusterEvent;
 import org.onosproject.cluster.ClusterEventListener;
 import org.onosproject.cluster.ClusterService;
 import org.onosproject.cluster.ControllerNode;
+import org.onosproject.cluster.LeadershipService;
 import org.onosproject.cluster.NodeId;
 import org.onosproject.core.ApplicationId;
+import org.onosproject.mastership.MastershipService;
 import org.onosproject.net.ConnectPoint;
 import org.onosproject.net.Device;
 import org.onosproject.net.ElementId;
@@ -168,6 +170,12 @@ public class MacLearnerManager
     protected DeviceService deviceService;
 
     @Reference(cardinality = MANDATORY)
+    protected LeadershipService leadershipService;
+
+    @Reference(cardinality = MANDATORY)
+    protected MastershipService mastershipService;
+
+    @Reference(cardinality = MANDATORY)
     protected PacketService packetService;
 
     @Reference(cardinality = MANDATORY)
@@ -291,7 +299,7 @@ public class MacLearnerManager
     private void clearExpiredMacMappings() {
         Date curDate = new Date();
         for (Map.Entry<MacLearnerKey, Versioned<MacLearnerValue>> entry : macAddressMap.entrySet()) {
-            if (!isDeviceMine(entry.getKey().getDeviceId())) {
+            if (!isLocalLeader(entry.getKey().getDeviceId())) {
                 continue;
             }
             if (curDate.getTime() - entry.getValue().value().getTimestamp() > cacheDurationSec * 1000) {
@@ -304,17 +312,20 @@ public class MacLearnerManager
      * Determines if this instance should handle this device based on
      * consistent hashing.
      *
-     * @param id device ID
+     * @param deviceId device ID
      * @return true if this instance should handle the device, otherwise false
      */
-    private boolean isDeviceMine(DeviceId id) {
-        NodeId nodeId = hasher.hash(id.toString());
-        if (log.isDebugEnabled()) {
-            log.debug("Node that will handle {} is {}", id, nodeId);
+    public boolean isLocalLeader(DeviceId deviceId) {
+        if (deviceService.isAvailable(deviceId)) {
+            return mastershipService.isLocalMaster(deviceId);
+        } else {
+            // Fallback with Leadership service - device id is used as topic
+            NodeId leader = leadershipService.runForLeadership(
+                    deviceId.toString()).leaderNodeId();
+            // Verify if this node is the leader
+            return clusterService.getLocalNode().id().equals(leader);
         }
-        return nodeId.equals(clusterService.getLocalNode().id());
     }
-
     protected void bindSadisService(SadisService service) {
         this.subsService = service.getSubscriberInfoService();
         log.info("Sadis service is loaded");
@@ -813,7 +824,11 @@ public class MacLearnerManager
 
         @Override
         public boolean isRelevant(DeviceEvent event) {
-            return isDeviceMine(event.subject().id());
+             boolean master = isLocalLeader(event.subject().id());
+             if (log.isDebugEnabled() && master) {
+                 log.debug("Master for {}, handling event {}", event.subject().id(), event);
+             }
+             return master;
         }
 
     }

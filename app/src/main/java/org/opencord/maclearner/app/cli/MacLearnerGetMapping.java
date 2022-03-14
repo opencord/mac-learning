@@ -69,7 +69,7 @@ public class MacLearnerGetMapping extends AbstractShellCommand {
                 Optional<MacAddress> macAddress = macLearnerService.getMacMapping(DeviceId.deviceId(devId),
                                                                                   PortNumber.portNumber(portNo),
                                                                                   VlanId.vlanId(vlanId));
-                if (!macAddress.isPresent()) {
+                if (macAddress.isEmpty()) {
                     print("MAC Address not found with given parameters.\nUse -1 for VlanId=None");
                 } else {
                     print(String.format("MAC: %s", macAddress.get()));
