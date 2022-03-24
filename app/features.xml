@@ -19,5 +19,6 @@
              description="${project.description}">
         <bundle>mvn:${project.groupId}/maclearner-api/${maclearner.api.version}</bundle>
         <bundle>mvn:${project.groupId}/${project.artifactId}/${project.version}</bundle>
+        <bundle>mvn:${project.groupId}/sadis-api/${sadis.api.version}</bundle>
     </feature>
 </features>

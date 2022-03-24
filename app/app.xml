@@ -22,4 +22,5 @@
     <description>Mapping clients' MAC Address and Port Number information temporarily.</description>
     <artifact>mvn:${project.groupId}/${project.artifactId}/${project.version}</artifact>
     <artifact>mvn:${project.groupId}/maclearner-api/${maclearner.api.version}</artifact>
+    <artifact>mvn:${project.groupId}/sadis-api/${sadis.api.version}</artifact>
 </app>
