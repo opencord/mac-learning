@@ -372,6 +372,14 @@ public class MacLearnerManager
                 enableDhcpForward = o;
             }
         }
+
+        o = Tools.isPropertyEnabled(properties, AUTO_CLEAR_MAC_MAPPING);
+        if (o != null) {
+            if (o != autoClearMacMapping) {
+                log.info("Changing autoClearMacMapping to: {} from {}", o, autoClearMacMapping);
+                autoClearMacMapping = o;
+            }
+        }
     }
 
     private Integer setMacMappingCacheDuration(Integer second) {
