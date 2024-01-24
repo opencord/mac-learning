@@ -39,7 +39,7 @@
         <onos.app.origin>ON.Lab</onos.app.origin>
         <onos.app.url>http://onosproject.org</onos.app.url>
         <maclearner.api.version>1.2.3-SNAPSHOT</maclearner.api.version>
-        <sadis.api.version>5.11.1</sadis.api.version>
+        <sadis.api.version>5.12.2</sadis.api.version>
     </properties>
 
     <modules>
