@@ -29,7 +29,7 @@
     <groupId>org.opencord</groupId>
     <artifactId>maclearner</artifactId>
     <packaging>pom</packaging>
-    <version>1.2.4</version>
+    <version>1.2.5-SNAPSHOT</version>
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -38,7 +38,7 @@
         <onos.app.title>Mac Address by Connected Port Information Service</onos.app.title>
         <onos.app.origin>ON.Lab</onos.app.origin>
         <onos.app.url>http://onosproject.org</onos.app.url>
-        <maclearner.api.version>1.2.4</maclearner.api.version>
+        <maclearner.api.version>1.2.5-SNAPSHOT</maclearner.api.version>
         <sadis.api.version>5.12.3</sadis.api.version>
     </properties>
 
